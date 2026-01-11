@@ -38,7 +38,7 @@ const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
 // --- 🎙️ UNLIMITED FREE VOICE ENGINE (gTTS) ---
 async function speakInVC(connection, text) {
-    const filePath = './voice.mp3';
+    const filePath = '/tmp/voice.mp3';
     const gtts = new gTTS(text, 'hi'); // Hinglish support
     
     gtts.save(filePath, (err) => {
