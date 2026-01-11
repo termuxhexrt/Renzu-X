@@ -37,17 +37,24 @@ const client = new Client({
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
 // --- 🎙️ UNLIMITED FREE VOICE ENGINE (gTTS) ---
+// Isse replace karo apne purane speakInVC function ko
 async function speakInVC(connection, text) {
-    const filePath = '/tmp/voice.mp3';
+    const filePath = '/tmp/voice.mp3'; // Railway ke liye safe path
     const gtts = new gTTS(text, 'hi');
     
     gtts.save(filePath, (err) => {
-        if (err) return console.log("Voice Save Error");
+        if (err) return console.log("❌ Voice Save Error");
+
         const player = createAudioPlayer();
-        // ffmpeg-static ka path use karna safe hai
-        const resource = createAudioResource(filePath, { inlineVolume: true });
+        // ffmpeg-static ka path use karna sabse best hai
+        const resource = createAudioResource(filePath, { 
+            inlineVolume: true 
+        });
+
         player.play(resource);
         connection.subscribe(player);
+        
+        console.log("🔊 Playing voice in VC...");
     });
 }
 
