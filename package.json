@@ -17,7 +17,7 @@
     "cheerio": "^1.0.0-rc.12",
     "@discordjs/voice": "^0.16.1",
     "@discordjs/opus": "^0.9.0",
-    "libsodium-wrappers": "^0.7.13"
+    "libsodium-wrappers": "^0.7.13",
     "gtts": "^0.2.1",
     "ffmpeg-static": "^5.2.0"
   },
