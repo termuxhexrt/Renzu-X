@@ -9,7 +9,11 @@ const DEVELOPER_ID = '1104652354655113268';
 const PREFIX = '!';
 
 // --- 🗄️ MONGODB CONNECT ---
-const mongoClient = new MongoClient(process.env.MONGODB_URI);
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+    console.error("❌ ERROR: MONGODB_URI is not defined in Railway Variables!");
+}
+const mongoClient = uri ? new MongoClient(uri) : null;
 let db;
 async function connectDB() {
     try {
