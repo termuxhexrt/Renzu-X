@@ -39,15 +39,15 @@ const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 // --- 🎙️ UNLIMITED FREE VOICE ENGINE (gTTS) ---
 async function speakInVC(connection, text) {
     const filePath = '/tmp/voice.mp3';
-    const gtts = new gTTS(text, 'hi'); // Hinglish support
+    const gtts = new gTTS(text, 'hi');
     
     gtts.save(filePath, (err) => {
-        if (err) return;
+        if (err) return console.log("Voice Save Error");
         const player = createAudioPlayer();
-        const resource = createAudioResource(filePath);
+        // ffmpeg-static ka path use karna safe hai
+        const resource = createAudioResource(filePath, { inlineVolume: true });
         player.play(resource);
         connection.subscribe(player);
-        player.on(AudioPlayerStatus.Idle, () => { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); });
     });
 }
 
