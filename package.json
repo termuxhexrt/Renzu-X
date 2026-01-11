@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Renzu-X Elite Cyber Security Bot",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js",
     "deploy": "node deploy-commands.js"
@@ -13,7 +14,7 @@
     "dotenv": "^16.3.1",
     "axios": "^1.6.2"
   },
-"engines": {
-  "node": ">=18.0.0"
-}
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
