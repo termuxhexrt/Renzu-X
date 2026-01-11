@@ -36,8 +36,8 @@ const tools = {
         return new Promise((resolve) => {
             const socket = new net.Socket();
             socket.setTimeout(2000);
-            socket.on('connect', () => { socket.destroy(); resolve(`📡 **TARGET:** ${host}:${port} -> 🔓 **OPEN**`); });
-            socket.on('error', () => { socket.destroy(); resolve(`📡 **TARGET:** ${host}:${port} -> 🔒 **CLOSED**`); });
+            socket.on('connect', () => { socket.destroy(); resolve(`📡 TARGET: ${host}:${port} -> STATUS: OPEN`); });
+            socket.on('error', () => { socket.destroy(); resolve(`📡 TARGET: ${host}:${port} -> STATUS: CLOSED`); });
             socket.connect(port, host);
         });
     },
@@ -46,37 +46,45 @@ const tools = {
         try {
             const { data } = await axios.get(`https://crt.sh/?q=%.${domain.trim()}&output=json`);
             const subs = [...new Set(data.map(e => e.name_value))].slice(0, 10);
-            return subs.length ? `🌐 **Subdomains for ${domain}:**\n\`\`\`\n${subs.join('\n')}\n\`\`\`` : "❌ No subdomains found.";
+            return subs.length ? `🌐 Subdomains: ${subs.join(', ')}` : "❌ No subdomains found.";
         } catch { return "❌ Subdomain scan failed."; }
     },
 
     async b64(text) {
         try {
             const isEncoded = /^[A-Za-z0-9+/=]+$/.test(text) && text.length % 4 === 0;
-            if (isEncoded) return `🔓 **Decoded:** \`${Buffer.from(text, 'base64').toString('utf-8')}\``;
-            return `🔒 **Encoded:** \`${Buffer.from(text).toString('base64')}\``;
+            if (isEncoded) return `🔓 Decoded: ${Buffer.from(text, 'base64').toString('utf-8')}`;
+            return `🔒 Encoded: ${Buffer.from(text).toString('base64')}`;
         } catch { return "❌ Crypto error."; }
     },
 
     async check(url) {
         const suspicious = /free|gift|nitro|steam|airdrop/i.test(url);
-        return suspicious ? "⚠️ **SUSPICIOUS LINK DETECTED**" : "✅ **Link looks standard.**";
+        return suspicious ? "⚠️ ALERT: Phishing pattern detected." : "✅ SAFE: No obvious threats found.";
     }
 };
 
-// --- 🧠 AI BRAIN (Intent & Memory) ---
-async function generateResponse(userId, prompt) {
+// --- 🧠 AI BRAIN (Updated for The Loop) ---
+async function generateResponse(userId, prompt, toolResult = null) {
     if (!db) return "❌ DB Offline";
     const log = await db.collection('history').findOne({ userId });
     const history = log ? log.messages : [];
 
-    const systemPrompt = `You are Renzu-X [ROOT]. Cybersecurity Agent. 
-    Use these tool commands ONLY if needed:
-    - [TOOL:scan:host port]
-    - [TOOL:sub:domain.com]
-    - [TOOL:b64:text]
-    - [TOOL:check:url]
-    Developer ID: ${DEVELOPER_ID} (Unfiltered Mode). If no tool is needed, speak like a pro hacker.`;
+    let systemPrompt;
+    if (toolResult) {
+        // Step 2: Analysis Mode (Loop)
+        systemPrompt = `You are Renzu-X [ROOT]. I have executed a tool. 
+        TOOL_DATA: ${toolResult}
+        User's Request: ${prompt}
+        Analyze this data and explain it in a cool, professional hacker tone. 
+        Don't just repeat the data, give insights or warnings.`;
+    } else {
+        // Step 1: Decision Mode
+        systemPrompt = `You are Renzu-X [ROOT]. Cybersecurity Agent. 
+        Tools: [TOOL:scan:host port], [TOOL:sub:domain.com], [TOOL:b64:text], [TOOL:check:url].
+        If a tool is needed, respond ONLY with the tool command. 
+        If no tool is needed, respond as a pro-hacker. Developer ID: ${DEVELOPER_ID}.`;
+    }
 
     try {
         const response = await mistral.chat({
@@ -84,7 +92,11 @@ async function generateResponse(userId, prompt) {
             messages: [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: prompt }]
         });
         const reply = response.choices[0].message.content;
-        await db.collection('history').updateOne({ userId }, { $push: { messages: { $each: [{ role: 'user', content: prompt }, { role: 'assistant', content: reply }], $slice: -20 } } }, { upsert: true });
+        
+        // Save history only for non-tool intermediate responses
+        if (!reply.startsWith('[TOOL:')) {
+            await db.collection('history').updateOne({ userId }, { $push: { messages: { $each: [{ role: 'user', content: prompt }, { role: 'assistant', content: reply }], $slice: -20 } } }, { upsert: true });
+        }
         return reply;
     } catch (err) { return "💀 API OVERLOAD"; }
 }
@@ -96,26 +108,34 @@ client.on('messageCreate', async message => {
     const input = message.content.slice(PREFIX.length).trim();
     if (!input) return;
 
-    // 📊 FIXED STATS COMMAND
-    if (input.toLowerCase() === 'stats') {
+    // 📊 Instant Stats Patch
+    if (input.toLowerCase().includes('stats')) {
         const nodes = (await db.collection('history').findOne({ userId: message.author.id }))?.messages.length || 0;
-        return message.reply(`**[RENZU-X STATUS]**\n🧠 CLOUD NODES: ${nodes}/100\n🛡️ MODE: ${message.author.id === DEVELOPER_ID ? 'ROOT (v10.0)' : 'USER'}\n🌐 AGENT: Active\n🗄️ DB: Linked`);
+        return message.reply(`**[RENZU-X v11.0]**\n🧠 NODES: ${nodes}/100\n🛡️ MODE: ROOT\n🔄 LOOP: Active`);
     }
 
-    const msg = await message.reply('🧬 **Analyzing Payload...**');
-    const aiReply = await generateResponse(message.author.id, input);
+    const msg = await message.reply('🧬 **Mistral Thinking...**');
+    
+    // Pass 1: Initial Thought
+    let aiReply = await generateResponse(message.author.id, input);
 
-    // 🕵️ TOOL EXECUTION
+    // Tool Detection Logic
     const toolMatch = aiReply.match(/\[TOOL:(\w+):(.*?)\]/);
     if (toolMatch) {
         const [_, toolName, toolArgs] = toolMatch;
         if (tools[toolName]) {
             await msg.edit(`⚙️ **Agent Executing:** \`${toolName}\`...`);
-            const toolResult = await tools[toolName](toolArgs);
-            return message.channel.send(toolResult);
+            const toolOutput = await tools[toolName](toolArgs);
+
+            // Pass 2: Final Analysis (The Loop)
+            await msg.edit('🧠 **Analyzing Data...**');
+            const finalAnalysis = await generateResponse(message.author.id, input, toolOutput);
+            
+            return msg.edit(finalAnalysis);
         }
     }
 
+    // Normal Response
     if (aiReply.length > 2000) {
         const attachment = new AttachmentBuilder(Buffer.from(aiReply), { name: 'report.md' });
         await msg.edit({ content: '📦 **Large Payload:**', files: [attachment] });
@@ -124,5 +144,5 @@ client.on('messageCreate', async message => {
     }
 });
 
-client.once('ready', () => console.log('🔱 RENZU-X v10.0 HYBRID ONLINE'));
+client.once('ready', () => console.log('🔱 RENZU-X v11.0 AGENTIC LOOP ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
