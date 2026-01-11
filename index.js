@@ -178,6 +178,7 @@ client.on('messageCreate', async message => {
     } else { 
         await msg.edit(reply); 
     }
+});
 
 client.once('ready', () => console.log('🔱 RENZU-X v6.5 ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
