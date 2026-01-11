@@ -1,6 +1,6 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
-const { Mistral } = require('@mistralai/mistralai');
+import 'dotenv/config';
+import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Mistral } from '@mistralai/mistralai';;
 
 // --- CONFIGURATION ---
 const DEVELOPER_ID = '1104652354655113268';
