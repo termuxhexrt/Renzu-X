@@ -7,6 +7,7 @@ import * as cheerio from 'cheerio';
 import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
 import gTTS from 'gtts';
 import fs from 'fs';
+import { getVoiceConnection } from '@discordjs/voice';
 
 const DEVELOPER_ID = '1104652354655113268';
 const PREFIX = '!';
@@ -158,21 +159,26 @@ client.on('messageCreate', async message => {
         return await waitMsg.edit({ content: `🎨 **Generated via ${bestSlug}**`, files: [imgUrl] });
     }
 
+   // --- 🎮 COMMAND HANDLER (Updated Section 4) ---
     // 4. SMART CHAT
     const msg = await message.reply('🧬 **Processing...**');
     const reply = await generateResponse(message.author.id, input);
     
-    // Voice Auto-Reply (agar bot VC mein hai)
-    const connection = joinVoiceChannel({ channelId: message.member.voice?.channel?.id || "", guildId: message.guild.id, adapterCreator: message.guild.voiceAdapterCreator, group: 'default' });
-    if (message.member.voice.channel) {
-        speakInVC(connection, reply.slice(0, 200)); // Pehle 200 characters bolega
+    // Check karo agar bot pehle se VC mein hai (getVoiceConnection use karo)
+    const connection = getVoiceConnection(message.guild.id);
+    
+    if (connection && message.member.voice.channel) {
+        // Sirf tab bolega agar tu aur bot ek hi VC mein ho
+        if (message.member.voice.channelId === message.guild.members.me.voice.channelId) {
+            console.log("🔊 Triggering speech...");
+            speakInVC(connection, reply.slice(0, 200)); 
+        }
     }
 
     if (reply.length > 2000) {
         const buffer = Buffer.from(reply, 'utf-8');
         await msg.edit({ content: '📦 **Payload:**', files: [{ attachment: buffer, name: 'report.md' }] });
     } else { await msg.edit(reply); }
-});
 
 client.once('ready', () => console.log('🔱 RENZU-X v6.5 ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
