@@ -126,17 +126,29 @@ client.on('messageCreate', async message => {
         const nodes = (await getMemory(message.author.id)).length;
         return message.reply(`**[RENZU-X STATUS]**\n🧠 CLOUD NODES: ${nodes}/100\n🎙️ VOICE: Ready\n🎨 DRAW: Auto-Perchance\n🗄️ DB: Linked`);
     }
-
-    // 2. VOICE JOIN
+// 2. VOICE JOIN
     if (input.toLowerCase() === 'join') {
         const channel = message.member.voice.channel;
         if (!channel) return message.reply("Bhai VC mein toh aao!");
-        const connection = joinVoiceChannel({ channelId: channel.id, guildId: message.guild.id, adapterCreator: message.guild.voiceAdapterCreator });
+        
+        const connection = joinVoiceChannel({ 
+            channelId: channel.id, 
+            guildId: message.guild.id, 
+            adapterCreator: message.guild.voiceAdapterCreator,
+            selfDeaf: false,  // Isse bot ke kaan khul jayenge (Deafened hatega)
+            selfMute: false,  // Isse bot mute nahi rahega
+            group: client.user.id
+        });
+
         await message.reply("🎙️ **Joined VC.** Main sun raha hoon!");
-        speakInVC(connection, "System Online. Main voice channel mein aa gaya hoon.");
+        
+        // Thoda delay dena zaruri hai taaki connection stable ho jaye
+        setTimeout(() => {
+            speakInVC(connection, "System Online. Main voice channel mein aa gaya hoon.");
+        }, 1500); 
+        
         return;
     }
-
     // 3. DRAW (Autonomous)
     if (input.startsWith('draw ')) {
         const prompt = input.replace('draw ', '');
