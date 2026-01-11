@@ -4,17 +4,19 @@ import MistralClient from '@mistralai/mistralai';
 import { MongoClient } from 'mongodb';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } from '@discordjs/voice';
+import gTTS from 'gtts';
+import fs from 'fs';
 
 const DEVELOPER_ID = '1104652354655113268';
 const PREFIX = '!';
 
 // --- 🗄️ MONGODB CONNECT ---
 const uri = process.env.MONGODB_URI;
-if (!uri) {
-    console.error("❌ ERROR: MONGODB_URI is not defined in Railway Variables!");
-}
+if (!uri) console.error("❌ ERROR: MONGODB_URI is not defined!");
 const mongoClient = uri ? new MongoClient(uri) : null;
 let db;
+
 async function connectDB() {
     try {
         await mongoClient.connect();
@@ -25,11 +27,42 @@ async function connectDB() {
 connectDB();
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates // Voice ke liye zaruri
+    ]
 });
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
-// --- 🧠 PERSISTENT CLOUD MEMORY ---
+// --- 🎙️ UNLIMITED FREE VOICE ENGINE (gTTS) ---
+async function speakInVC(connection, text) {
+    const filePath = './voice.mp3';
+    const gtts = new gTTS(text, 'hi'); // Hinglish support
+    
+    gtts.save(filePath, (err) => {
+        if (err) return;
+        const player = createAudioPlayer();
+        const resource = createAudioResource(filePath);
+        player.play(resource);
+        connection.subscribe(player);
+        player.on(AudioPlayerStatus.Idle, () => { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); });
+    });
+}
+
+// --- 🧠 AI GENERATOR SELECTOR ---
+async function autoSelectGenerator(prompt) {
+    try {
+        const res = await mistral.chat({
+            model: 'mistral-medium',
+            messages: [{ role: 'system', content: `Analyze: "${prompt}". Return ONLY the slug of the best Perchance generator from this list: 'ai-text-to-image-generator', 'anime-instance-generator', 'cyberpunk-city-generator'. No extra text.` }]
+        });
+        return res.choices[0].message.content.trim().replace(/'/g, "");
+    } catch { return 'ai-text-to-image-generator'; }
+}
+
+// --- 🗄️ MEMORY & SEARCH (TERA OLD LOGIC) ---
 async function getMemory(userId) {
     if (!db) return [];
     const col = db.collection('history');
@@ -40,51 +73,29 @@ async function getMemory(userId) {
 async function saveMemory(userId, role, content) {
     if (!db) return;
     const col = db.collection('history');
-    await col.updateOne({ userId }, 
-        { $push: { messages: { $each: [{ role, content }], $slice: -100 } } }, 
-        { upsert: true });
+    await col.updateOne({ userId }, { $push: { messages: { $each: [{ role, content }], $slice: -100 } } }, { upsert: true });
 }
 
-// --- 🌐 DUAL-SEARCH ENGINE (SCRAPE + SERPER FALLBACK) ---
 async function smartSearch(query) {
-    // 1. Try Free Scraping first
     try {
-        const { data } = await axios.get(`https://www.google.com/search?q=${encodeURIComponent(query)}`, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
+        const { data } = await axios.get(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const $ = cheerio.load(data);
         let results = [];
         $('.tF2Cxc').each((i, el) => { if (i < 2) results.push($(el).text()); });
         if (results.length > 0) return `[SCRAPE DATA]: ${results.join('\n')}`;
-    } catch (e) { console.log("Scraper blocked, switching to Serper..."); }
-
-    // 2. Fallback to Serper API
+    } catch (e) { }
     try {
-        const resp = await axios.post('https://google.serper.dev/search', { q: query }, {
-            headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' }
-        });
+        const resp = await axios.post('https://google.serper.dev/search', { q: query }, { headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' } });
         return `[SERPER DATA]: ${resp.data.organic.map(r => r.snippet).join('\n')}`;
-    } catch (e) { return "All search uplinks failed."; }
+    } catch (e) { return "Search failed."; }
 }
 
-// --- 🤖 THE EVOLVED REASONING ENGINE ---
-async function generateResponse(userId, prompt) {
+// --- 🤖 RESPONSE ENGINE ---
+async function generateResponse(userId, prompt, isVoice = false) {
     const history = await getMemory(userId);
-    let webData = "";
-    
-    if (prompt.match(/search|latest|exploit|cve|2026/i)) {
-        webData = await smartSearch(prompt);
-    }
+    let webData = (prompt.match(/search|latest|exploit|2026/i)) ? await smartSearch(prompt) : "";
 
-    const monsterInstruction = `
-    You are Renzu-X v4.5 (Immortal Hybrid Agent).
-    - DATABASE: MongoDB Atlas (Persistent).
-    - SEARCH: Dual-Uplink (Cheerio + Serper Fallback).
-    - REASONING: Chain-of-Thought, Self-Correction, Multilingual.
-    - ACCESS: ${userId === DEVELOPER_ID ? 'ROOT_BYPASS' : 'USER_LEVEL'}.
-    - CONTEXT: Use provided web data to analyze 2026 threats.
-    WEB DATA: ${webData}
-    `;
+    const monsterInstruction = `You are Renzu-X v6.5. Hybrid AI with Voice & Search. Database: MongoDB. Access: ${userId === DEVELOPER_ID ? 'ROOT' : 'USER'}. WEB: ${webData}`;
 
     try {
         const response = await mistral.chat({
@@ -95,27 +106,54 @@ async function generateResponse(userId, prompt) {
         await saveMemory(userId, 'user', prompt);
         await saveMemory(userId, 'assistant', reply);
         return reply;
-    } catch (err) { return "💀 **CRITICAL SYSTEM OVERLOAD**"; }
+    } catch (err) { return "💀 **SYSTEM OVERLOAD**"; }
 }
 
+// --- 🎮 COMMAND HANDLER ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
     const input = message.content.slice(PREFIX.length).trim();
-    
+
+    // 1. STATS (Tera Old Command)
     if (input.startsWith('stats')) {
-        const mem = (process.usage ? (process.memoryUsage().rss / 1024 / 1024).toFixed(2) : "N/A");
         const nodes = (await getMemory(message.author.id)).length;
-        return message.reply(`**[MONSTER v4.5 STATUS]**\n🔋 RSS: ${mem}MB\n🧠 CLOUD NODES: ${nodes}/100\n📡 SEARCH: Hybrid Active\n🗄️ DB: MongoDB Linked`);
+        return message.reply(`**[RENZU-X STATUS]**\n🧠 CLOUD NODES: ${nodes}/100\n🎙️ VOICE: Ready\n🎨 DRAW: Auto-Perchance\n🗄️ DB: Linked`);
     }
 
-    const msg = await message.reply('🧬 **Renzu-X Hybrid: Processing with Dual-Search...**');
+    // 2. VOICE JOIN
+    if (input.toLowerCase() === 'join') {
+        const channel = message.member.voice.channel;
+        if (!channel) return message.reply("Bhai VC mein toh aao!");
+        const connection = joinVoiceChannel({ channelId: channel.id, guildId: message.guild.id, adapterCreator: message.guild.voiceAdapterCreator });
+        await message.reply("🎙️ **Joined VC.** Main sun raha hoon!");
+        speakInVC(connection, "System Online. Main voice channel mein aa gaya hoon.");
+        return;
+    }
+
+    // 3. DRAW (Autonomous)
+    if (input.startsWith('draw ')) {
+        const prompt = input.replace('draw ', '');
+        const waitMsg = await message.reply('🧠 **AI Selecting Model...**');
+        const bestSlug = await autoSelectGenerator(prompt);
+        const imgUrl = `https://perchance.org/api/downloadImage?generator=${bestSlug}&prompt=${encodeURIComponent(prompt)}`;
+        return await waitMsg.edit({ content: `🎨 **Generated via ${bestSlug}**`, files: [imgUrl] });
+    }
+
+    // 4. SMART CHAT
+    const msg = await message.reply('🧬 **Processing...**');
     const reply = await generateResponse(message.author.id, input);
     
+    // Voice Auto-Reply (agar bot VC mein hai)
+    const connection = joinVoiceChannel({ channelId: message.member.voice?.channel?.id || "", guildId: message.guild.id, adapterCreator: message.guild.voiceAdapterCreator, group: 'default' });
+    if (message.member.voice.channel) {
+        speakInVC(connection, reply.slice(0, 200)); // Pehle 200 characters bolega
+    }
+
     if (reply.length > 2000) {
         const buffer = Buffer.from(reply, 'utf-8');
-        await msg.edit({ content: '📦 **Heavy Payload Attached:**', files: [{ attachment: buffer, name: 'monster_report.md' }] });
+        await msg.edit({ content: '📦 **Payload:**', files: [{ attachment: buffer, name: 'report.md' }] });
     } else { await msg.edit(reply); }
 });
 
-client.once('ready', () => console.log('🔱 RENZU-X v4.5 HYBRID ONLINE'));
+client.once('ready', () => console.log('🔱 RENZU-X v6.5 ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
