@@ -101,17 +101,17 @@ async function generateResponse(userId, prompt, toolResult = null) {
     } catch (err) { return "💀 API OVERLOAD"; }
 }
 
-// --- 🎮 MAIN HANDLER ---
+// --- 🎮 MAIN HANDLER (Optimized for Speed) ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
 
     const input = message.content.slice(PREFIX.length).trim();
     if (!input) return;
 
-    // 📊 Instant Stats Patch
+    // ⚡ INSTANT RESPONSE: AI ke paas bhejne se pehle hi check karlo
     if (input.toLowerCase().includes('stats')) {
         const nodes = (await db.collection('history').findOne({ userId: message.author.id }))?.messages.length || 0;
-        return message.reply(`**[RENZU-X v11.0]**\n🧠 NODES: ${nodes}/100\n🛡️ MODE: ROOT\n🔄 LOOP: Active`);
+        return message.reply(`**[RENZU-X STATUS]**\n🧠 CLOUD NODES: ${nodes}/100\n🛡️ MODE: ROOT (v11.5)\n⚡ SPEED: Optimized\n🗄️ DB: Linked`);
     }
 
     const msg = await message.reply('🧬 **Mistral Thinking...**');
@@ -119,7 +119,7 @@ client.on('messageCreate', async message => {
     // Pass 1: Initial Thought
     let aiReply = await generateResponse(message.author.id, input);
 
-    // Tool Detection Logic
+    // 🕵️ TOOL DETECTION
     const toolMatch = aiReply.match(/\[TOOL:(\w+):(.*?)\]/);
     if (toolMatch) {
         const [_, toolName, toolArgs] = toolMatch;
@@ -128,14 +128,14 @@ client.on('messageCreate', async message => {
             const toolOutput = await tools[toolName](toolArgs);
 
             // Pass 2: Final Analysis (The Loop)
-            await msg.edit('🧠 **Analyzing Data...**');
+            await msg.edit('🧠 **Finalizing Analysis...**');
             const finalAnalysis = await generateResponse(message.author.id, input, toolOutput);
             
             return msg.edit(finalAnalysis);
         }
     }
 
-    // Normal Response
+    // Normal AI Response (If no tool needed)
     if (aiReply.length > 2000) {
         const attachment = new AttachmentBuilder(Buffer.from(aiReply), { name: 'report.md' });
         await msg.edit({ content: '📦 **Large Payload:**', files: [attachment] });
