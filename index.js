@@ -166,26 +166,27 @@ client.on('messageCreate', async message => {
         return await waitMsg.edit({ content: `🎨 **Generated via ${bestSlug}**`, files: [imgUrl] });
     }
 
-   // 4. SMART CHAT
+   // 4. SMART CHAT (Final Fix for Voice)
     const msg = await message.reply('🧬 **Processing...**');
     const reply = await generateResponse(message.author.id, input);
     
-    // Naya connection banane ki jagah, existing connection check karo
-    const connection = getVoiceConnection(message.guild.id); 
-    
-    // Agar bot VC mein hai aur tu bhi usi channel mein hai jisme bot hai
-    if (connection && message.member.voice.channelId === message.guild.members.me.voice.channelId) {
-        console.log("🔊 Bot is speaking in VC...");
-        speakInVC(connection, reply.slice(0, 200)); 
-    }
-
+    // Sabse pehle text reply bhej do
     if (reply.length > 2000) {
         const buffer = Buffer.from(reply, 'utf-8');
         await msg.edit({ content: '📦 **Payload:**', files: [{ attachment: buffer, name: 'report.md' }] });
     } else { 
         await msg.edit(reply); 
     }
-});
+
+    // AB VOICE TRIGER KARO
+    const connection = getVoiceConnection(message.guild.id);
+    if (connection && message.member.voice.channelId === message.guild.members.me.voice.channelId) {
+        console.log("🔊 Speaking in VC now...");
+        // Clean text for TTS (remove emojis/symbols for better sound)
+        const cleanReply = reply.slice(0, 200).replace(/[#*`_]/g, '');
+        speakInVC(connection, cleanReply); 
+    }
+}); // <--- Bracket close
 
 client.once('ready', () => console.log('🔱 RENZU-X v6.5 ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
