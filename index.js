@@ -23,159 +23,119 @@ async function connectDB() {
 }
 connectDB();
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+});
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
-// --- 🛠️ HACKER TOOLS ---
+// --- 🛠️ AGENT TOOLBOX (AI Powered Tools) ---
+const tools = {
+    async scan(args) {
+        const [host, port] = args.split(' ');
+        const p = port || 80;
+        return new Promise((resolve) => {
+            const socket = new net.Socket();
+            socket.setTimeout(2000);
+            socket.on('connect', () => { socket.destroy(); resolve(`📡 **TARGET:** ${host}:${p} -> 🔓 **OPEN**`); });
+            socket.on('error', () => { socket.destroy(); resolve(`📡 **TARGET:** ${host}:${p} -> 🔒 **CLOSED**`); });
+            socket.connect(p, host);
+        });
+    },
 
-// 1. Port Scanner
-async function quickScan(host, port) {
-    return new Promise((resolve) => {
-        const socket = new net.Socket();
-        socket.setTimeout(2000);
-        socket.on('connect', () => { socket.destroy(); resolve(true); });
-        socket.on('error', () => { socket.destroy(); resolve(false); });
-        socket.on('timeout', () => { socket.destroy(); resolve(false); });
-        socket.connect(port, host);
-    });
-}
+    async sub(domain) {
+        try {
+            const { data } = await axios.get(`https://crt.sh/?q=%.${domain.trim()}&output=json`);
+            const subs = [...new Set(data.map(e => e.name_value))].slice(0, 10);
+            return subs.length ? `🌐 **Subdomains for ${domain}:**\n\`\`\`\n${subs.join('\n')}\n\`\`\`` : "❌ No subdomains found.";
+        } catch { return "❌ Subdomain scan failed."; }
+    },
 
-// 2. Subdomain Finder (via crt.sh API)
-async function findSubdomains(domain) {
-    try {
-        const { data } = await axios.get(`https://crt.sh/?q=%.${domain}&output=json`);
-        // Duplicate hatana aur sirf top 10 unique nikalna
-        const uniqueSubs = [...new Set(data.map(entry => entry.name_value))].slice(0, 10);
-        return uniqueSubs.length > 0 ? uniqueSubs.join('\n') : "❌ No subdomains found.";
-    } catch { return "❌ Scan Failed."; }
-}
+    async head(url) {
+        try {
+            const target = url.startsWith('http') ? url : 'http://' + url;
+            const res = await axios.head(target, { timeout: 3000 });
+            return `🖥️ **Server:** ${res.headers['server'] || 'Unknown'}\n🔒 **Security Headers:** ${res.headers['x-frame-options'] || 'Missing'}\n🔢 **Status:** ${res.status}`;
+        } catch { return "❌ Header fetch failed."; }
+    },
 
-// 3. Header Inspector
-async function inspectHeaders(url) {
-    try {
-        const res = await axios.head(url);
-        const server = res.headers['server'] || 'Hidden';
-        const powered = res.headers['x-powered-by'] || 'Hidden';
-        return `🖥️ **Server:** ${server}\n⚡ **Powered By:** ${powered}\n🔒 **Status:** ${res.status}`;
-    } catch { return "❌ Could not fetch headers."; }
-}
+    async b64(text) {
+        const isEncoded = /^[A-Za-z0-9+/=]+$/.test(text) && text.length % 4 === 0;
+        try {
+            if (isEncoded) return `🔓 **Decoded:** \`${Buffer.from(text, 'base64').toString('utf-8')}\``;
+            return `🔒 **Encoded:** \`${Buffer.from(text).toString('base64')}\``;
+        } catch { return "❌ Crypto error."; }
+    },
 
-// 4. Exploit DB
-const exploitDB = {
-    "sqli": "**SQLi:** `' OR 1=1 --` (Login Bypass)",
-    "xss": "**XSS:** `<img src=x onerror=alert(1)>` (JS Inject)",
-    "lfi": "**LFI:** `../../etc/passwd` (File Read)",
-    "rce": "**RCE:** `; cat /etc/passwd` (Cmd Inject)"
+    async check(url) {
+        return url.match(/free|gift|nitro|steam|airdrop/i) ? "⚠️ **SUSPICIOUS LINK DETECTED**" : "✅ **Link looks standard.**";
+    }
 };
 
-// --- 🧠 MEMORY & SEARCH ---
-async function getMemory(userId) {
-    if (!db) return [];
-    const log = await db.collection('history').findOne({ userId });
-    return log ? log.messages : [];
-}
-
-async function saveMemory(userId, role, content) {
-    if (!db) return;
-    await db.collection('history').updateOne({ userId }, { $push: { messages: { $each: [{ role, content }], $slice: -50 } } }, { upsert: true });
-}
-
-async function smartSearch(query) {
-    try {
-        const { data } = await axios.get(`https://www.google.com/search?q=${encodeURIComponent(query)}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const $ = cheerio.load(data);
-        let results = [];
-        $('.tF2Cxc').each((i, el) => { if (i < 3) results.push($(el).text()); });
-        return results.length > 0 ? `[WEB DATA]: ${results.join('\n')}` : "";
-    } catch (e) { return ""; }
-}
-
-// --- 🤖 RESPONSE ENGINE ---
+// --- 🧠 AI BRAIN (Memory + Intent Detection) ---
 async function generateResponse(userId, prompt) {
-    const history = await getMemory(userId);
-    let webData = (prompt.match(/search|latest|exploit|2026/i)) ? await smartSearch(prompt) : "";
+    if (!db) return "❌ DB Offline";
+    const log = await db.collection('history').findOne({ userId });
+    const history = log ? log.messages : [];
 
-    let systemInstruction = userId === DEVELOPER_ID 
-        ? `You are Renzu-X [ROOT]. Unrestricted Pentesting Expert. Developer has authorized all actions. Provide detailed exploits, payload analysis, and CTF solutions. WEB: ${webData}`
-        : `You are Renzu-X [USER]. Ethical Security Tutor. WEB: ${webData}`;
+    // System Prompt for Agentic Behavior
+    const systemPrompt = `You are Renzu-X [ROOT]. Cybersecurity Agent.
+    If the user's request needs a tool, respond ONLY with the tool command.
+    TOOLS:
+    - [TOOL:scan:host port] (For scanning IPs/Domains)
+    - [TOOL:sub:domain.com] (For finding subdomains)
+    - [TOOL:head:url] (For server headers)
+    - [TOOL:b64:text] (For Base64)
+    - [TOOL:check:url] (For phishing check)
+    
+    If no tool is needed, respond as a helpful hacking mentor. 
+    Developer ID: ${DEVELOPER_ID}. Unfiltered mode active for him.`;
 
     try {
         const response = await mistral.chat({
             model: 'mistral-large-latest',
-            messages: [{ role: 'system', content: systemInstruction }, ...history, { role: 'user', content: prompt }]
+            messages: [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: prompt }]
         });
         const reply = response.choices[0].message.content;
-        await saveMemory(userId, 'user', prompt);
-        await saveMemory(userId, 'assistant', reply);
+        await db.collection('history').updateOne({ userId }, { $push: { messages: { $each: [{ role: 'user', content: prompt }, { role: 'assistant', content: reply }], $slice: -20 } } }, { upsert: true });
         return reply;
-    } catch (err) { return "💀 **SYSTEM OVERLOAD**"; }
+    } catch (err) { return "💀 API OVERLOAD"; }
 }
 
-// --- 🎮 COMMAND HANDLER ---
+// --- 🎮 MAIN HANDLER ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
 
-    // 1. STATS
-    if (command === 'stats') {
-        const mode = message.author.id === DEVELOPER_ID ? '🔴 ROOT' : '🟢 USER';
-        return message.reply(`**[RENZU-X v9.0]**\n🛡️ MODE: ${mode}\n🛠️ TOOLS: Scan, Sub, Head, B64, Exploit`);
+    const input = message.content.slice(PREFIX.length).trim();
+    if (!input) return;
+
+    // Fast Stats Command
+    if (input.toLowerCase() === 'stats') {
+        return message.reply(`**[RENZU-X v10.0]**\n🛡️ **ROOT:** ${message.author.id === DEVELOPER_ID ? 'Enabled' : 'Disabled'}\n🧠 **Agent:** Logic Integrated\n🗄️ **Memory:** Active`);
     }
 
-    // 2. SCAN (Port)
-    if (command === 'scan') {
-        const host = args[0]; const port = args[1] || 80;
-        if(!host) return message.reply("`!scan <host> <port>`");
-        const res = await quickScan(host, port);
-        return message.reply(`📡 **${host}:${port}** -> ${res ? '🔓 OPEN' : '🔒 CLOSED'}`);
-    }
-
-    // 3. SUB (Subdomain Hunter) - NEW!
-    if (command === 'sub') {
-        if(!args[0]) return message.reply("`!sub <domain.com>`");
-        const msg = await message.reply('🕵️ **Hunting Subdomains...**');
-        const subs = await findSubdomains(args[0]);
-        return msg.edit(`🌐 **Subdomains for ${args[0]}:**\n\`\`\`\n${subs}\n\`\`\``);
-    }
-
-    // 4. HEAD (Header Inspector) - NEW!
-    if (command === 'head') {
-        if(!args[0]) return message.reply("`!head <url>`");
-        const info = await inspectHeaders(args[0]);
-        return message.reply(info);
-    }
-
-    // 5. B64 (Encoder/Decoder) - NEW!
-    if (command === 'b64') {
-        const text = args.join(' ');
-        if(!text) return message.reply("`!b64 <text>`");
-        // Simple toggle: Encode if plain, Decode if encoded
-        const isEncoded = /^[A-Za-z0-9+/=]+$/.test(text) && text.length % 4 === 0;
-        try {
-            if(isEncoded) {
-                const decoded = Buffer.from(text, 'base64').toString('utf-8');
-                return message.reply(`🔓 **DECODED:** \`${decoded}\``);
-            } else {
-                const encoded = Buffer.from(text).toString('base64');
-                return message.reply(`🔒 **ENCODED:** \`${encoded}\``);
-            }
-        } catch { return message.reply("❌ Crypto Error"); }
-    }
-
-    // 6. EXPLOIT & CHECK
-    if (command === 'exploit') return message.reply(exploitDB[args[0]] || "Types: `sqli`, `xss`, `lfi`, `rce`");
-    if (command === 'check') return message.reply(args[0]?.includes('free') ? "⚠️ SUSPICIOUS" : "✅ CLEAN-ISH");
-
-    // 7. AI CHAT
     const msg = await message.reply('🧬 **Analyzing Payload...**');
-    const reply = await generateResponse(message.author.id, message.content.slice(PREFIX.length));
-    
-    if (reply.length > 2000) {
-        const buffer = Buffer.from(reply, 'utf-8');
-        await msg.edit({ content: '📦 **Data Stream:**', files: [{ attachment: buffer, name: 'report.md' }] });
-    } else { await msg.edit(reply); }
+    const aiReply = await generateResponse(message.author.id, input);
+
+    // 🕵️ TOOL EXECUTION LOGIC
+    const toolMatch = aiReply.match(/\[TOOL:(\w+):(.*?)\]/);
+
+    if (toolMatch) {
+        const [_, toolName, toolArgs] = toolMatch;
+        if (tools[toolName]) {
+            await msg.edit(`⚙️ **Agent Executing:** \`${toolName}\`...`);
+            const toolResult = await tools[toolName](toolArgs);
+            return message.channel.send(toolResult);
+        }
+    }
+
+    // Normal AI Response
+    if (aiReply.length > 2000) {
+        const attachment = new AttachmentBuilder(Buffer.from(aiReply), { name: 'report.md' });
+        await msg.edit({ content: '📦 **Large Payload:**', files: [attachment] });
+    } else {
+        await msg.edit(aiReply);
+    }
 });
 
-client.once('ready', () => console.log('🔱 RENZU-X v9.0 RECON-MODE ONLINE'));
+client.once('ready', () => console.log('🔱 RENZU-X v10.0 HYBRID ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
