@@ -1,5 +1,5 @@
-require('dotenv').config();
-const { REST, Routes, SlashCommandBuilder } = require('discord.js');
+import 'dotenv/config';
+import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 // Helper to create basic string option
 const strOpt = (builder, name, desc) => 
