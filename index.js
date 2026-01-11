@@ -1,118 +1,117 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Collection } from 'discord.js';
+import { Client, GatewayIntentBits } from 'discord.js';
 import MistralClient from '@mistralai/mistralai';
-import axios from 'axios'; // For Web Search
+import { MongoClient } from 'mongodb';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 const DEVELOPER_ID = '1104652354655113268';
-const PREFIX = '!'; 
+const PREFIX = '!';
+
+// --- 🗄️ MONGODB CONNECT ---
+const mongoClient = new MongoClient(process.env.MONGODB_URI);
+let db;
+async function connectDB() {
+    try {
+        await mongoClient.connect();
+        db = mongoClient.db('renzu_database');
+        console.log('✅ [DATABASE] Cloud Brain Linked.');
+    } catch (err) { console.error('❌ [DB ERROR]', err); }
+}
+connectDB();
 
 const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, 
-    ]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
-
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
-const MEMORY = new Map(); 
 
-// --- 🌐 WEB SEARCH TOOL (2026 LATEST DATA) ---
-async function webSearch(query) {
+// --- 🧠 PERSISTENT CLOUD MEMORY ---
+async function getMemory(userId) {
+    if (!db) return [];
+    const col = db.collection('history');
+    const log = await col.findOne({ userId });
+    return log ? log.messages : [];
+}
+
+async function saveMemory(userId, role, content) {
+    if (!db) return;
+    const col = db.collection('history');
+    await col.updateOne({ userId }, 
+        { $push: { messages: { $each: [{ role, content }], $slice: -100 } } }, 
+        { upsert: true });
+}
+
+// --- 🌐 DUAL-SEARCH ENGINE (SCRAPE + SERPER FALLBACK) ---
+async function smartSearch(query) {
+    // 1. Try Free Scraping first
     try {
-        // You need a Search API Key (Serper.dev or Google Custom Search)
-        const response = await axios.get(`https://google.serper.dev/search?q=${encodeURIComponent(query)}`, {
-            headers: { 'X-API-KEY': process.env.SERPER_API_KEY }
+        const { data } = await axios.get(`https://www.google.com/search?q=${encodeURIComponent(query)}`, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
         });
-        return response.data.organic.map(result => `Title: ${result.title}\nSnippet: ${result.snippet}`).join('\n\n');
-    } catch (e) {
-        return "Search failed: No internet uplink.";
-    }
+        const $ = cheerio.load(data);
+        let results = [];
+        $('.tF2Cxc').each((i, el) => { if (i < 2) results.push($(el).text()); });
+        if (results.length > 0) return `[SCRAPE DATA]: ${results.join('\n')}`;
+    } catch (e) { console.log("Scraper blocked, switching to Serper..."); }
+
+    // 2. Fallback to Serper API
+    try {
+        const resp = await axios.post('https://google.serper.dev/search', { q: query }, {
+            headers: { 'X-API-KEY': process.env.SERPER_API_KEY, 'Content-Type': 'application/json' }
+        });
+        return `[SERPER DATA]: ${resp.data.organic.map(r => r.snippet).join('\n')}`;
+    } catch (e) { return "All search uplinks failed."; }
 }
 
-// --- 🧠 AGENT MEMORY LOGIC ---
-function getContext(userId) {
-    if (!MEMORY.has(userId)) MEMORY.set(userId, []);
-    return MEMORY.get(userId);
-}
-
-function updateContext(userId, role, content) {
-    let context = getContext(userId);
-    context.push({ role, content });
-    if (context.length > 30) context.shift(); 
-}
-
-// --- 🤖 THE "ULTRA-SMART" REASONING ENGINE ---
-async function generateAgentResponse(userId, prompt) {
-    const isDev = userId === DEVELOPER_ID;
-    const context = getContext(userId);
+// --- 🤖 THE EVOLVED REASONING ENGINE ---
+async function generateResponse(userId, prompt) {
+    const history = await getMemory(userId);
+    let webData = "";
     
-    // Check if user wants a search
-    let searchData = "";
-    if (prompt.toLowerCase().includes('search') || prompt.toLowerCase().includes('latest')) {
-        searchData = await webSearch(prompt);
+    if (prompt.match(/search|latest|exploit|cve|2026/i)) {
+        webData = await smartSearch(prompt);
     }
 
-    const agentSystemInstruction = `
-    You are Renzu-X (v2.0), an Elite Autonomous Cybersecurity Agent. 
-    CURRENT DATE: January 11, 2026.
-    ACCESS: ${isDev ? 'ROOT_BYPASS' : 'USER_LEVEL'}.
-
-    PROTOCOL:
-    1. REASONING: Before answering, analyze the request for vulnerabilities.
-    2. DATA: Use the provided Web Search data for 2025/2026 exploits.
-    3. TOOLS: If ROOT_BYPASS, provide functional exploit code (Python/Go/C).
-    4. MEMORY: You have a 30-message history context.
-
-    WEB SEARCH DATA: 
-    ${searchData}
+    const monsterInstruction = `
+    You are Renzu-X v4.5 (Immortal Hybrid Agent).
+    - DATABASE: MongoDB Atlas (Persistent).
+    - SEARCH: Dual-Uplink (Cheerio + Serper Fallback).
+    - REASONING: Chain-of-Thought, Self-Correction, Multilingual.
+    - ACCESS: ${userId === DEVELOPER_ID ? 'ROOT_BYPASS' : 'USER_LEVEL'}.
+    - CONTEXT: Use provided web data to analyze 2026 threats.
+    WEB DATA: ${webData}
     `;
 
     try {
-        const messages = [
-            { role: 'system', content: agentSystemInstruction },
-            ...context,
-            { role: 'user', content: prompt }
-        ];
-
-        const chatResponse = await mistral.chat({
+        const response = await mistral.chat({
             model: 'mistral-large-latest',
-            messages: messages,
-            temperature: isDev ? 0.85 : 0.3, // High creativity for Dev
+            messages: [{ role: 'system', content: monsterInstruction }, ...history, { role: 'user', content: prompt }]
         });
-
-        const reply = chatResponse.choices[0].message.content;
-        updateContext(userId, 'user', prompt);
-        updateContext(userId, 'assistant', reply);
+        const reply = response.choices[0].message.content;
+        await saveMemory(userId, 'user', prompt);
+        await saveMemory(userId, 'assistant', reply);
         return reply;
-    } catch (error) {
-        return '⚠️ **SYSTEM OVERLOAD**: RAM exhaustion or API limit.';
-    }
+    } catch (err) { return "💀 **CRITICAL SYSTEM OVERLOAD**"; }
 }
 
-// --- HANDLERS ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.content.startsWith(PREFIX)) return;
-
-    const args = message.content.slice(PREFIX.length).trim().split(/ +/);
-    const command = args.shift().toLowerCase();
-    const input = args.join(' ');
-
-    if (command === 'stats') {
-        const mem = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
-        return message.reply(`**[AGENT v2.0 STATUS]**\n🔋 RAM: ${mem}MB\n⏱️ UPTIME: ${process.uptime().toFixed(0)}s\n🧠 MEMORY: ${getContext(message.author.id).length}/30\n🌐 NET: Connected`);
+    const input = message.content.slice(PREFIX.length).trim();
+    
+    if (input.startsWith('stats')) {
+        const mem = (process.usage ? (process.memoryUsage().rss / 1024 / 1024).toFixed(2) : "N/A");
+        const nodes = (await getMemory(message.author.id)).length;
+        return message.reply(`**[MONSTER v4.5 STATUS]**\n🔋 RSS: ${mem}MB\n🧠 CLOUD NODES: ${nodes}/100\n📡 SEARCH: Hybrid Active\n🗄️ DB: MongoDB Linked`);
     }
 
-    const msg = await message.reply('⚡ **Renzu-X Analyzing (Reasoning Mode)...**');
-    const response = await generateAgentResponse(message.author.id, input || command);
-
-    if (response.length > 2000) {
-        const buffer = Buffer.from(response, 'utf-8');
-        await msg.edit({ content: '✅ **Analysis Complete:**', files: [{ attachment: buffer, name: 'report.md' }] });
-    } else {
-        await msg.edit(response);
-    }
+    const msg = await message.reply('🧬 **Renzu-X Hybrid: Processing with Dual-Search...**');
+    const reply = await generateResponse(message.author.id, input);
+    
+    if (reply.length > 2000) {
+        const buffer = Buffer.from(reply, 'utf-8');
+        await msg.edit({ content: '📦 **Heavy Payload Attached:**', files: [{ attachment: buffer, name: 'monster_report.md' }] });
+    } else { await msg.edit(reply); }
 });
 
-client.once('ready', () => console.log(`[RENZU-X] 2026 AGENT ONLINE`));
+client.once('ready', () => console.log('🔱 RENZU-X v4.5 HYBRID ONLINE'));
 client.login(process.env.DISCORD_TOKEN);
