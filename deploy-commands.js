@@ -49,12 +49,14 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
     try {
         console.log(`[DEPLOY] Refreshing ${commands.length} application commands...`);
-        // Change this line for instant update in your server
-await rest.put(
-    Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-    { body: commands },
-);
-        console.log('[DEPLOY] Success! Commands registered.');
+        
+        // YE LINE CHANGE KI HAI: applicationGuildCommands use kiya hai instant update ke liye
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: commands },
+        );
+
+        console.log('[DEPLOY] Success! Commands registered to your server.');
     } catch (error) {
         console.error(error);
     }
