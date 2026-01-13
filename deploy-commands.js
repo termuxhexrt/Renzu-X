@@ -1,46 +1,47 @@
 import 'dotenv/config';
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
-// Helper to create basic string option
-const strOpt = (builder, name, desc) => 
-    builder.addStringOption(option => option.setName(name).setDescription(desc).setRequired(true));
-
 const commands = [
-    // --- OFFENSIVE & RED TEAMING ---
-    new SlashCommandBuilder().setName('xploit-search').setDescription('Search CVE/ExploitDB').addStringOption(o => o.setName('service').setDescription('Target Service').setRequired(true)),
-    new SlashCommandBuilder().setName('payload-gen').setDescription('Generate Attack Payloads').addStringOption(o => o.setName('vector').setDescription('SQLi, XSS, SSTI, etc').setRequired(true)),
-    new SlashCommandBuilder().setName('dork-maker').setDescription('Generate Google Dorks').addStringOption(o => o.setName('target').setDescription('Target Domain').setRequired(true)),
-    new SlashCommandBuilder().setName('bypass-check').setDescription('WAF Bypass Tech').addStringOption(o => o.setName('waf').setDescription('WAF Name').setRequired(true)),
-    new SlashCommandBuilder().setName('shell-gen').setDescription('Reverse Shell Generator').addStringOption(o => o.setName('ip').setDescription('LHOST').setRequired(true)).addStringOption(o => o.setName('port').setDescription('LPORT').setRequired(true)),
-    new SlashCommandBuilder().setName('wordlist-gen').setDescription('Custom Wordlist Creator').addStringOption(o => o.setName('seeds').setDescription('Keywords (comma sep)').setRequired(true)),
+    // --- 🔥 MAIN AI COMMANDS (Tool-Based) ---
+    new SlashCommandBuilder()
+        .setName('ask')
+        .setDescription('Ask Renzu-X anything - AI will automatically use the right tools')
+        .addStringOption(o => o.setName('query').setDescription('Your question or command').setRequired(true)),
 
-    // --- AUTOMATION ---
-    new SlashCommandBuilder().setName('port-scanner').setDescription('Generate Python Port Scanner'),
-    new SlashCommandBuilder().setName('brute-force-gen').setDescription('Generate Brute Force Script'),
-    new SlashCommandBuilder().setName('dir-buster').setDescription('Generate Directory Buster'),
-    new SlashCommandBuilder().setName('packet-sniffer').setDescription('Generate Packet Sniffer'),
-    new SlashCommandBuilder().setName('sub-enum').setDescription('Generate Subdomain Enum Tool'),
-    new SlashCommandBuilder().setName('keylog-sim').setDescription('Generate Educational Keylogger'),
+    // --- 🛠️ DIRECT TOOL COMMANDS ---
+    new SlashCommandBuilder()
+        .setName('scan')
+        .setDescription('Scan host and port (or use /ask "scan google.com:443")')
+        .addStringOption(o => o.setName('target').setDescription('host:port or host').setRequired(true)),
 
-    // --- OSINT ---
-    new SlashCommandBuilder().setName('ip-trace').setDescription('IP Geolocation & ASN Analysis').addStringOption(o => o.setName('ip').setDescription('Target IP').setRequired(true)),
-    new SlashCommandBuilder().setName('dns-lookup').setDescription('Detailed DNS Enum').addStringOption(o => o.setName('domain').setDescription('Domain').setRequired(true)),
-    new SlashCommandBuilder().setName('whois').setDescription('WHOIS Data Lookup').addStringOption(o => o.setName('domain').setDescription('Domain').setRequired(true)),
-    new SlashCommandBuilder().setName('breach-check').setDescription('Check Credential Leaks').addStringOption(o => o.setName('query').setDescription('Email/User').setRequired(true)),
-    new SlashCommandBuilder().setName('user-stalk').setDescription('Username Availability Search').addStringOption(o => o.setName('user').setDescription('Username').setRequired(true)),
-    new SlashCommandBuilder().setName('headers').setDescription('HTTP Header Analysis').addStringOption(o => o.setName('url').setDescription('Target URL').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('hunt')
+        .setDescription('Search GitHub for security tools (or use /ask "hunt SQL injection")')
+        .addStringOption(o => o.setName('query').setDescription('Search query').setRequired(true)),
 
-    // --- DEVELOPER ---
-    new SlashCommandBuilder().setName('code-audit').setDescription('Identify Vulns in Code').addStringOption(o => o.setName('snippet').setDescription('Paste Code').setRequired(true)),
-    new SlashCommandBuilder().setName('regex-master').setDescription('Regex Generator').addStringOption(o => o.setName('pattern').setDescription('What to match').setRequired(true)),
-    new SlashCommandBuilder().setName('docker-gen').setDescription('Dockerfile Creator').addStringOption(o => o.setName('stack').setDescription('Tech Stack').setRequired(true)),
-    new SlashCommandBuilder().setName('git-fix').setDescription('Git Conflict Solver').addStringOption(o => o.setName('issue').setDescription('Git Error').setRequired(true)),
-    new SlashCommandBuilder().setName('json-tool').setDescription('JSON Formatter').addStringOption(o => o.setName('data').setDescription('JSON String').setRequired(true)),
+    new SlashCommandBuilder()
+        .setName('analyze')
+        .setDescription('Deep AI analysis of security topic (or use /ask "analyze buffer overflow")')
+        .addStringOption(o => o.setName('topic').setDescription('Topic to analyze').setRequired(true)),
 
-    // --- SYSTEM (Hidden) ---
-    new SlashCommandBuilder().setName('system-stats').setDescription('Dev Only: Stats'),
-    new SlashCommandBuilder().setName('api-health').setDescription('Dev Only: Health'),
-    new SlashCommandBuilder().setName('clear-cache').setDescription('Dev Only: Purge Cache'),
+    // --- 🔬 REVERSE ENGINEERING ---
+    new SlashCommandBuilder()
+        .setName('reverse')
+        .setDescription('Reverse engineering tasks (or use /ask with file attachment)')
+        .addStringOption(o => o.setName('task').setDescription('What to do: extract strings, analyze binary, explain assembly').setRequired(true)),
+
+    // --- 🔐 ENCODING/DECODING ---
+    new SlashCommandBuilder()
+        .setName('encode')
+        .setDescription('Encode text (base64, hex, etc)')
+        .addStringOption(o => o.setName('type').setDescription('base64, hex').setRequired(true))
+        .addStringOption(o => o.setName('text').setDescription('Text to encode').setRequired(true)),
+
+    new SlashCommandBuilder()
+        .setName('decode')
+        .setDescription('Decode text (base64, hex, etc)')
+        .addStringOption(o => o.setName('type').setDescription('base64, hex').setRequired(true))
+        .addStringOption(o => o.setName('data').setDescription('Data to decode').setRequired(true)),
 
 ].map(command => command.toJSON());
 
@@ -50,14 +51,22 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log(`[DEPLOY] Refreshing ${commands.length} application commands...`);
         
-        // YE LINE CHANGE KI HAI: applicationGuildCommands use kiya hai instant update ke liye
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commands },
-        );
-
-        console.log('[DEPLOY] Success! Commands registered to your server.');
+        // Use applicationGuildCommands for instant updates (guild-specific)
+        // Or use applicationCommands for global (takes up to 1 hour)
+        if (process.env.GUILD_ID) {
+            await rest.put(
+                Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+                { body: commands },
+            );
+            console.log('[DEPLOY] ✅ Success! Commands registered to your server (Guild).');
+        } else {
+            await rest.put(
+                Routes.applicationCommands(process.env.CLIENT_ID),
+                { body: commands },
+            );
+            console.log('[DEPLOY] ✅ Success! Commands registered globally (may take up to 1 hour).');
+        }
     } catch (error) {
-        console.error(error);
+        console.error('[DEPLOY] ❌ Error:', error);
     }
 })();
